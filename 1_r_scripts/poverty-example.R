@@ -4,6 +4,10 @@
 
 options(scipen=999)
 
+crs_proj <- CRS("+init=epsg:4326") # This project will use WGS 84 projected coordinate system
+crs_geog <- CRS("+init=epsg:2285") # Washington State plane CRS
+
+
 # LOAD PACKAGES -----------------------------------------------------------------------------------
 
 library(rgdal)    # for readOGR and others
@@ -37,15 +41,21 @@ if(!file.exists("./2_inputs/Neighborhoods/WGS84/Neighborhoods.dbf")){
 }
 
 nhoods <- readOGR(dsn = "./2_inputs/Neighborhoods/WGS84/",  # select YCC and adjacent neigborhood boundaries
-                  layer = "Neighborhoods")
+                  layer = "Neighborhoods") %>% 
+        spTransform(.,CRSobj = crs_proj)
 
 # select the Centreal Area Crescent neighborhoods from the small list
 CAC_sm <- c("Atlantic", "First Hill", "International District", "Minor", "Pioneer Square", "Yesler Terrace") 
 
 nhoods_CAC <- nhoods[nhoods$S_HOOD %in% CAC_sm,]
 
+# create a centroid object for neighborhood labels 
+nhoods_CAC_cntr <- gCentroid(spgeom = nhoods_CAC,byid = TRUE) %>%     
+        SpatialPointsDataFrame(.,data = as.data.frame(nhoods_CAC@data))
+
 red <- "#ff0000" # leaflet uses HEX code colors
 white <- "#ffffff"
+blue <- "#0000FF"
 
 leaflet() %>%
         addProviderTiles("CartoDB.Positron") %>%
@@ -53,13 +63,42 @@ leaflet() %>%
                     fillColor = red, 
                     fillOpacity = .5,
                     color = white,
-                    opacity = .5)
+                    opacity = .5,
+                    popup = ~S_HOOD) 
 
-nhoods_CAC_union <- gUnaryUnion(spgeom = nhoods_CAC) # merge CAC neighborhoods together into one polygon
+
+nhoods_CAC_union <- gUnaryUnion(spgeom = nhoods_CAC) %>%  # merge CAC neighborhoods together into one polygon
+        spTransform(., CRSobj = crs_geog) %>%
+        gBuffer(width = -1000) %>% 
+        spTransform(., CRSobj = crs_proj)
 
 # GET BLOCK.GROUP SPATIAL DATA --------------------------------------------------------------------
 
+# Note: to expedite the processing time, the following script is run once and the output
+# is saved for future uses
 
+bg_seattle <- tigris::block_groups(state = "WA",county = "King") %>%  # Download the census block groups for King County
+        spTransform(., CRSobj = crs_proj)
+
+overlap <- gIntersects(spgeom1 = bg_seattle,
+                       spgeom2 = nhoods_CAC_union,
+                       byid = T) %>% 
+        which(.==TRUE)
+        
+
+bg_CAC <- bg_seattle[overlap,]
+
+leaflet() %>%
+        addProviderTiles("CartoDB.Positron") %>%
+        addPolygons(data = nhoods_CAC,
+                    fillColor = red, 
+                    fillOpacity = .5,
+                    color = white,
+                    opacity = .5,
+                    popup = ~S_HOOD) %>% 
+        addPolygons(data = bg_CAC,
+                    fillColor = blue,
+                    opacity = 0)
 
 # GET DEMOGRAPHIC DATA ----------------------------------------------------------------------------
 
