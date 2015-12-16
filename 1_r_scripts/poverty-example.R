@@ -55,6 +55,7 @@ nhoods_CAC_cntr <- gCentroid(spgeom = nhoods_CAC,byid = TRUE) %>%
 
 red <- "#ff0000" # leaflet uses HEX code colors
 white <- "#ffffff"
+black <- "#000000"
 blue <- "#0000FF"
 
 leaflet() %>%
@@ -72,6 +73,30 @@ nhoods_CAC_union <- gUnaryUnion(spgeom = nhoods_CAC) %>%  # merge CAC neighborho
         gBuffer(width = -1000) %>% 
         spTransform(., CRSobj = crs_proj)
 
+# GET SCHOOL ATTENDANCE AREA BOUNDARY SPATIAL DATA ------------------------------------------------
+
+# Check if the Seattle public school attendance area boundaries shapefiles
+# have already been downloaded, and if they haven't then download the zip file.
+
+if(!file.exists("./2_inputs/sps_attendance_area_ES_2015_2016.sbx")){  
+        
+        url <- "https://www.seattleschools.org/UserFiles/Servers/Server_543/File/District/Departments/Enrollment%20Planning/Maps/gisdata/SPS_AttendanceAreasAndSchools_Shapefiles_2015_2016.zip" # save the URL for the neighborhood boundaries
+        
+        temp <- tempfile() # create a temporary file to hold the compressed download
+        
+        download(url, dest = temp, mode="wb") # download the file
+        
+        unzip (temp, exdir = "./2_inputs/") # extract the ESRI geodatabase file to a project folder
+}
+
+bgatz <- readOGR(dsn = "./2_inputs/SPS_AttendanceAreasAndSchools_Shapefiles_2015_2016_v2/",
+                 layer = "sps_attendance_area_ES_2015_2016") %>% 
+        .[bgatz@data$ES_ZONE == "Gatzert",] %>% 
+        gBuffer(width = -500) %>%    # decrease the size of the polygon to avoid including sliver overlap block groups
+        spTransform(., CRSobj = crs_proj)
+
+
+
 # GET BLOCK.GROUP SPATIAL DATA --------------------------------------------------------------------
 
 # Note: to expedite the processing time, the following script is run once and the output
@@ -81,7 +106,7 @@ bg_seattle <- tigris::block_groups(state = "WA",county = "King") %>%  # Download
         spTransform(., CRSobj = crs_proj)
 
 overlap <- gIntersects(spgeom1 = bg_seattle,
-                       spgeom2 = nhoods_CAC_union,
+                       spgeom2 = bgatz,
                        byid = T) %>% 
         which(.==TRUE)
         
@@ -98,7 +123,10 @@ leaflet() %>%
                     popup = ~S_HOOD) %>% 
         addPolygons(data = bg_CAC,
                     fillColor = blue,
-                    opacity = 0)
+                    opacity = 0) %>% 
+        addPolygons(data = bgatz,
+                    fillOpacity = 0,
+                    color = black)
 
 # GET DEMOGRAPHIC DATA ----------------------------------------------------------------------------
 
