@@ -25,6 +25,29 @@ crs_geog <- CRS("+init=epsg:2285") # Washington State plane CRS
 
 # GET AND SUBSET BLOCK.GROUP SPATIAL DATA --------------------------------------------------------------------
 
+# bgSelect: A function to expedite the process of merging, buffering, and overlap selection of block groups
+
+bgSelect <- function(shapes, multi = FALSE, buffer = -500, layer){
+        
+        if(multi == TRUE){
+                shapes <<- gUnaryUnion(spgeom = data)
+        }
+        
+        shp_buf <- spTransform(shapes, CRSobj = crs_geog) %>% 
+                gBuffer(spgeom = .,width = buffer) %>%
+                spTransform(., CRSobj = crs_proj)
+        
+        overlap <- gIntersects(spgeom1 = bg_sea,
+                               spgeom2 = shp_buf,
+                               byid = T) %>% 
+                which(.==TRUE)
+        
+        bg_sea[overlap,] %>%
+                writeOGR(dsn = "./2_inputs/",
+                         layer = layer,
+                         driver = "ESRI Shapefile")
+}
+
 # Note: to expedite the processing time, the following `if()` scripts are run once and the outputs
 # are saved and accessed directly in all subsequent uses
 
@@ -76,7 +99,7 @@ if(!file.exists("./2_inputs/blockgroups_CAC_nhoods.shp")){
                          driver = "ESRI Shapefile")
 }
 
-bg_CAC <- readOGR(dsn = "./2_inputs/",   
+bg_nhoods <- readOGR(dsn = "./2_inputs/",   
                   layer = "blockgroups_CAC_nhoods") %>% 
         spTransform(CRSobj = crs_proj)
 
@@ -114,6 +137,16 @@ if(!file.exists("./2_inputs/blockgroups_bgatz.shp")){
 
 bg_bgatz <- readOGR(dsn = "./2_inputs/",layer = "blockgroups_bgatz") %>% 
         spTransform(CRSobj = crs_proj)
+
+# MORE BLOCK.GROUP SUBSETTING ---------------------------------------------------------------------
+
+myCAC <- readOGR(dsn = "./2_inputs/myCACbound/",layer = "myCACbound")
+
+bgSelect(shapes = myCAC,layer = "blockgroups_myCACbound")
+
+bg_myCACbound <- readOGR(dsn = "./2_inputs/",layer = "blockgroups_myCACbound")
+
+myLeaflet(bg_myCACbound)
 
 # GET DEMOGRAPHIC DATA ----------------------------------------------------------------------------
 
