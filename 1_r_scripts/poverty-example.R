@@ -2,19 +2,19 @@
 
 # LOAD PACKAGES -----------------------------------------------------------------------------------
 
-library(rgdal)    # for readOGR and others
-library(sp)       # for spatial objects
-library(leaflet)  # for interactive maps (NOT leafletR here)
-library(dplyr)    # for working with data frames
-library(ggplot2)  # for plotting
-library(tigris)
-library(acs)
-library(stringr) # to pad fips codes
-library(purrr)
-library(magrittr)
-library(downloader)
-library(tmap)
-library(rgeos)
+require(rgdal)    # for readOGR and others
+require(sp)       # for spatial objects
+require(leaflet)  # for interactive maps (NOT leafletR here)
+require(dplyr)    # for working with data frames
+require(ggplot2)  # for plotting
+require(tigris)
+require(acs)
+require(stringr) # to pad fips codes
+require(purrr)
+require(magrittr)
+require(downloader)
+require(tmap)
+require(rgeos)
 
 # PROJECT SETTINGS --------------------------------------------------------------------------------
 
@@ -30,22 +30,40 @@ crs_geog <- CRS("+init=epsg:2285") # Washington State plane CRS
 bgSelect <- function(shapes, multi = FALSE, buffer = -500, layer){
         
         if(multi == TRUE){
-                shapes <<- gUnaryUnion(spgeom = data)
+                shapes <-  rgeos::gUnaryUnion(spgeom = shapes)
+                
+                shp_buf <- spTransform(shapes, CRSobj = crs_geog) %>% 
+                        gBuffer(spgeom = .,width = buffer) %>%
+                        spTransform(., CRSobj = crs_proj)
+                
+                overlap <- gIntersects(spgeom1 = bg_sea,
+                                       spgeom2 = shp_buf,
+                                       byid = T) %>% 
+                        which(.==TRUE)
+                
+                bg_sea[overlap,] %>%
+                        writeOGR(dsn = "./2_inputs/",
+                                 layer = layer,
+                                 driver = "ESRI Shapefile")
+                
         }
         
-        shp_buf <- spTransform(shapes, CRSobj = crs_geog) %>% 
-                gBuffer(spgeom = .,width = buffer) %>%
-                spTransform(., CRSobj = crs_proj)
+        if(multi == FALSE){
+                shp_buf <- spTransform(shapes, CRSobj = crs_geog) %>% 
+                        gBuffer(spgeom = .,width = buffer) %>%
+                        spTransform(., CRSobj = crs_proj)
+                
+                overlap <- gIntersects(spgeom1 = bg_sea,
+                                       spgeom2 = shp_buf,
+                                       byid = T) %>% 
+                        which(.==TRUE)
+                
+                bg_sea[overlap,] %>%
+                        writeOGR(dsn = "./2_inputs/",
+                                 layer = layer,
+                                 driver = "ESRI Shapefile")
+        }
         
-        overlap <- gIntersects(spgeom1 = bg_sea,
-                               spgeom2 = shp_buf,
-                               byid = T) %>% 
-                which(.==TRUE)
-        
-        bg_sea[overlap,] %>%
-                writeOGR(dsn = "./2_inputs/",
-                         layer = layer,
-                         driver = "ESRI Shapefile")
 }
 
 # Note: to expedite the processing time, the following `if()` scripts are run once and the outputs
@@ -83,20 +101,7 @@ if(!file.exists("./2_inputs/blockgroups_CAC_nhoods.shp")){
         
         nhoods_CAC <- nhoods[nhoods$S_HOOD %in% CAC_sm,]
         
-        nhoods_CAC_union <- gUnaryUnion(spgeom = nhoods_CAC) %>%  # merge CAC neighborhoods together into one polygon
-                spTransform(., CRSobj = crs_geog) %>%
-                gBuffer(width = -1000) %>% 
-                spTransform(., CRSobj = crs_proj)
-        
-        overlap <- gIntersects(spgeom1 = bg_sea,
-                               spgeom2 = nhoods_CAC_union,
-                               byid = T) %>% 
-                which(.==TRUE)
-        
-        bg_sea[overlap,] %>% 
-                writeOGR(dsn = "./2_inputs/",
-                         layer = "blockgroups_CAC_nhoods",
-                         driver = "ESRI Shapefile")
+        bgSelect(shapes = nhoods_CAC,multi = TRUE,layer = "blockgroups_CAC_nhoods")
 }
 
 bg_nhoods <- readOGR(dsn = "./2_inputs/",   
@@ -138,15 +143,14 @@ if(!file.exists("./2_inputs/blockgroups_bgatz.shp")){
 bg_bgatz <- readOGR(dsn = "./2_inputs/",layer = "blockgroups_bgatz") %>% 
         spTransform(CRSobj = crs_proj)
 
-# MORE BLOCK.GROUP SUBSETTING ---------------------------------------------------------------------
+# All Census block groups within the boundary of the printed map (provided by Amy Gore, 12-14-2015)
 
-myCAC <- readOGR(dsn = "./2_inputs/myCACbound/",layer = "myCACbound")
+myCACbound <- readOGR(dsn = "./2_inputs/myCACbound/",layer = "myCACbound")
 
-bgSelect(shapes = myCAC,layer = "blockgroups_myCACbound")
+bgSelect(shapes = myCACbound,buffer = -1000,layer = "blockgroups_myCACbound")
 
-bg_myCACbound <- readOGR(dsn = "./2_inputs/",layer = "blockgroups_myCACbound")
-
-myLeaflet(bg_myCACbound)
+bg_myCAC <- readOGR(dsn = "./2_inputs/",layer = "blockgroups_myCACbound") %>% 
+        spTransform(CRSobj = crs_proj)
 
 # GET DEMOGRAPHIC DATA ----------------------------------------------------------------------------
 
@@ -161,6 +165,7 @@ myLeaflet <- function(data){
                 addPolygons(data = data)
 }
 
+myLeaflet(bg_myCAC)
 # SAVE MAP ----------------------------------------------------------------------------------------
 
 # SAVED OLD CODE ----------------------------------------------------------------------------------
